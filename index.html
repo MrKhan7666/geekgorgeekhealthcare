@@ -19,13 +19,6 @@
             }
         }
     </script>
-    <script type="importmap">
-      {
-        "imports": {
-          "@google/generative-ai": "https://esm.run/@google/generative-ai"
-        }
-      }
-    </script>
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="bg-darkBg text-slate-100 min-h-screen font-sans antialiased">
@@ -120,7 +113,7 @@
     </div>
 
     <script type="module">
-        import { GoogleGenAI } from "@google/generative-ai";
+        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
 
         // Internal Engine Framework States
         let uploadedDocs = {};
@@ -150,18 +143,23 @@
                 apiKey = keyInput;
                 isConnected = true;
                 
-                // Initialize the SDK model instance
-                const ai = new GoogleGenAI({ apiKey: apiKey });
-                aiModelInstance = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
+                try {
+                    // Initialize the stable browser Web SDK
+                    const genAI = new GoogleGenerativeAI(apiKey);
+                    aiModelInstance = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-                indicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
-                statusText.innerText = "Connected to Gemini";
-                statusText.className = "text-xs text-emerald-400 font-medium";
-                chatStatusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
-                
-                enableChatInterface();
-                clearChatCanvas();
-                appendSystemMessage("System Active: Gemini API Handshake Complete. Ready to process records.");
+                    indicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                    statusText.innerText = "Connected to Gemini";
+                    statusText.className = "text-xs text-emerald-400 font-medium";
+                    chatStatusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+                    
+                    enableChatInterface();
+                    clearChatCanvas();
+                    appendSystemMessage("System Active: Gemini API Handshake Complete. Ready to process records.");
+                } catch (err) {
+                    console.error("Initialization error:", err);
+                    alert("Error initializing Gemini client: " + err.message);
+                }
             } else {
                 alert("Please enter a valid Gemini API Key format.");
             }
@@ -248,7 +246,6 @@
         function runAgentEngine(id) {
             selectedDocId = id;
             
-            // UI visual update to show active document
             Object.keys(uploadedDocs).forEach(docId => {
                 const el = document.getElementById(docId);
                 if(el) {
@@ -270,16 +267,14 @@
             const query = inputEl.value.trim();
             if(!query) return;
 
-            if(!isConnected) {
+            if(!isConnected || !aiModelInstance) {
                 alert("Please add an API key and connect before chatting.");
                 return;
             }
 
-            // Render User Prompt Bubble
             appendChatBubble(query, 'user');
             inputEl.value = '';
 
-            // Render Loader Stream Element Placeholder
             const loadingBubbleId = appendChatBubble("", 'agent', true);
 
             try {
@@ -290,7 +285,6 @@
                     contextName = uploadedDocs[selectedDocId].name;
                 }
 
-                // Construct an enterprise RAG guarding pipeline instruction frame
                 const systemInstructions = `
                     You are an Agentic Healthcare Notebook AI assistant.
                     Here is the document context currently loaded by the patient:
@@ -309,12 +303,11 @@
                 const result = await aiModelInstance.generateContent(promptPayload);
                 const responseText = result.response.text();
 
-                // Replace loader placeholder content with real generation parsing
                 updateChatBubble(loadingBubbleId, responseText);
 
             } catch (error) {
                 console.error(error);
-                updateChatBubble(loadingBubbleId, `<span class="text-red-400">Error processing request via Gemini Engine API. Please check your credentials key structure logs.</span>`);
+                updateChatBubble(loadingBubbleId, `<span class="text-red-400">Error processing request via Gemini Engine API. Please ensure your API key is valid and has permissions to access the gemini-2.5-flash model.</span>`);
             }
         }
 
@@ -356,8 +349,7 @@
             const element = document.getElementById(id);
             if(element) {
                 const bubble = element.querySelector('div:last-child');
-                // Using simple formatting rules or basic tags mapping safely
-                bubble.innerHTML = htmlContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                bubble.innerHTML = htmlContent.replace(/\*\*(.*?)\*\"/g, '<strong>$1</strong>');
                 const output = document.getElementById('agentOutput');
                 output.scrollTop = output.scrollHeight;
             }
