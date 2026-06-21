@@ -88,7 +88,7 @@
                     <div id="chatStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></div>
                     <h2 class="font-semibold text-slate-200" id="chatEngineTitle">Agentic AI Copilot Chat</h2>
                 </div>
-                <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-md text-slate-400 border border-slate-700">Gemini Live Multimodal RAG</span>
+                <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-md text-slate-400 border border-slate-700">Gemini Native Multimodal Engine</span>
             </div>
 
             <div id="agentOutput" class="flex-1 overflow-y-auto p-6 space-y-4 text-sm leading-relaxed text-slate-300">
@@ -112,53 +112,64 @@
 
     </div>
 
-    <script type="module">
-        import { GoogleGenerativeAI } from "https://esm.run/@google/generative-ai";
-
+    <script>
+        // Core Internal Architecture States
         let uploadedDocs = {};
         let isConnected = false;
         let apiKey = "";
         let selectedDocId = null;
-        let aiModelInstance = null;
-
-        window.connectAPI = connectAPI;
-        window.injectMock = injectMock;
-        window.handleFileUpload = handleFileUpload;
-        window.runAgentEngine = runAgentEngine;
-        window.handleChatSubmit = handleChatSubmit;
 
         document.addEventListener("DOMContentLoaded", () => {
             lucide.createIcons();
         });
 
-        function connectAPI() {
+        async function connectAPI() {
             const keyInput = document.getElementById('apiKeyInput').value.trim();
             const indicator = document.getElementById('statusIndicator');
             const statusText = document.getElementById('statusText');
             const chatStatusDot = document.getElementById('chatStatusDot');
 
-            if(keyInput.length > 10) {
+            if(!keyInput) {
+                alert("Please enter or paste your Gemini API Key first.");
+                return;
+            }
+
+            statusText.innerText = "Verifying Key...";
+            indicator.className = "w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse";
+
+            try {
+                // Instantly ping Google API directly to perform cryptographic validation check
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${keyInput}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: "ping" }] }]
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || "Invalid token authentication check.");
+                }
+
                 apiKey = keyInput;
                 isConnected = true;
-                
-                try {
-                    const genAI = new GoogleGenerativeAI(apiKey);
-                    aiModelInstance = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-                    indicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
-                    statusText.innerText = "Connected to Gemini";
-                    statusText.className = "text-xs text-emerald-400 font-medium";
-                    chatStatusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
-                    
-                    enableChatInterface();
-                    clearChatCanvas();
-                    appendSystemMessage("System Active: Multimodal engine ready. Upload a document to trigger instant analysis.");
-                } catch (err) {
-                    console.error("Initialization error:", err);
-                    alert("Error initializing Gemini client: " + err.message);
-                }
-            } else {
-                alert("Please enter a valid Gemini API Key format.");
+                indicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                statusText.innerText = "Connected to Gemini";
+                statusText.className = "text-xs text-emerald-400 font-medium";
+                chatStatusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+                
+                enableChatInterface();
+                clearChatCanvas();
+                appendSystemMessage("System Active: Handshake authenticated. Upload file to trigger immediate reading analysis.");
+            } catch (err) {
+                console.error("Connection error:", err);
+                indicator.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+                statusText.innerText = "Disconnected";
+                statusText.className = "text-xs text-slate-400 font-medium";
+                alert("API Authentication Failed: " + err.message);
             }
         }
 
@@ -194,6 +205,10 @@
         };
 
         function injectMock(key) {
+            if (!isConnected) {
+                alert("Please connect your Gemini API Key first.");
+                return;
+            }
             const data = mockData[key];
             addDocument(data.name, data.type, data.content, false, "text/plain");
         }
@@ -258,7 +273,6 @@
             container.appendChild(docElement);
             lucide.createIcons();
             
-            // Connect and trigger initial automated scanning
             runAgentEngine(id, false);
             triggerAutoAnalysis(id);
         }
@@ -285,29 +299,38 @@
 
         async function triggerAutoAnalysis(id) {
             const doc = uploadedDocs[id];
-            appendSystemMessage(`Initializing auto-read engine on: ${doc.name}...`);
+            appendSystemMessage(`Initializing automated breakdown engine on: ${doc.name}...`);
             const loadingBubbleId = appendChatBubble("", 'agent', true);
             
             try {
-                let partsPayload = [];
+                let parts = [];
                 if(doc.isBinary) {
-                    partsPayload.push({
+                    parts.push({
                         inlineData: {
                             data: doc.content,
                             mimeType: doc.mimeType
                         }
                     });
-                    partsPayload.push({
+                    parts.push({
                         text: "Analyze this attached health document immediately. Identify and output: 1) Executive Summary, 2) Key Factors/Clinical Values Found, and 3) An explicit list detailing any URGENT ATTENTION areas, extreme clinical thresholds, or concerns requiring provider follow-up. Format your response cleanly using structured markdown."
                     });
                 } else {
-                    partsPayload.push({
+                    parts.push({
                         text: `Analyze this medical record context immediately:\n\nDocument Name: ${doc.name}\nContent:\n${doc.content}\n\nIdentify and output: 1) Executive Summary, 2) Key Factors/Clinical Values Found, and 3) An explicit list detailing any URGENT ATTENTION areas, extreme clinical thresholds, or concerns requiring provider follow-up. Format your response cleanly using structured markdown.`
                     });
                 }
                 
-                const result = await aiModelInstance.generateContent(partsPayload);
-                updateChatBubble(loadingBubbleId, result.response.text());
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: parts }] })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error?.message || "API processing failure.");
+
+                const replyText = data.candidates[0].content.parts[0].text;
+                updateChatBubble(loadingBubbleId, replyText);
             } catch (error) {
                 console.error(error);
                 updateChatBubble(loadingBubbleId, `<span class="text-red-400">Auto-read failed: ${error.message}</span>`);
@@ -326,29 +349,38 @@
             const loadingBubbleId = appendChatBubble("", 'agent', true);
 
             try {
-                let partsPayload = [];
+                let parts = [];
 
                 if(selectedDocId && uploadedDocs[selectedDocId]) {
                     const doc = uploadedDocs[selectedDocId];
                     if(doc.isBinary) {
-                        partsPayload.push({
+                        parts.push({
                             inlineData: {
                                 data: doc.content,
                                 mimeType: doc.mimeType
                             }
                         });
-                        partsPayload.push({ text: `Context: You are analyzing the attached active PDF document titled "${doc.name}".` });
+                        parts.push({ text: `Context: You are analyzing the attached active PDF document titled "${doc.name}".` });
                     } else {
-                        partsPayload.push({ text: `Document Context ("${doc.name}"):\n${doc.content}` });
+                        parts.push({ text: `Document Context ("${doc.name}"):\n${doc.content}` });
                     }
                 }
 
-                partsPayload.push({
+                parts.push({
                     text: `System Directive: You are an Agentic Healthcare Notebook AI assistant. Answer the following follow-up user query or clarification doubt regarding the active medical document accurately. Use structured markdown formatting.\n\nUser Doubt: ${query}`
                 });
 
-                const result = await aiModelInstance.generateContent(partsPayload);
-                updateChatBubble(loadingBubbleId, result.response.text());
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: parts }] })
+                });
+
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error?.message || "API processing failure.");
+
+                const replyText = data.candidates[0].content.parts[0].text;
+                updateChatBubble(loadingBubbleId, replyText);
 
             } catch (error) {
                 console.error(error);
@@ -373,4 +405,67 @@
                 bubble.className = "bg-slate-800 border border-slate-700 text-slate-200 text-xs px-4 py-3 rounded-2xl max-w-[85%]";
                 bubble.innerText = text;
             } else {
-                bubble.className = "bg-slate-900/90 border border-slate-800 text-slate-300 text-xs
+                bubble.className = "bg-slate-900/90 border border-slate-800 text-slate-300 text-xs px-4 py-3 rounded-2xl max-w-[90%] space-y-2 leading-relaxed";
+                if(isLoading) {
+                    bubble.innerHTML = `<div class="flex items-center gap-2 text-slate-400"><i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> Processing multimodal file data structure...</div>`;
+                } else {
+                    bubble.innerText = text;
+                }
+            }
+
+            messageWrapper.appendChild(nameLabel);
+            messageWrapper.appendChild(bubble);
+            output.appendChild(messageWrapper);
+            
+            lucide.createIcons();
+            output.scrollTop = output.scrollHeight;
+            return bubbleId;
+        }
+
+        function updateChatBubble(id, rawText) {
+            const element = document.getElementById(id);
+            if(element) {
+                const bubble = element.querySelector('div:last-child');
+                bubble.innerHTML = formatMarkdown(rawText);
+                const output = document.getElementById('agentOutput');
+                output.scrollTop = output.scrollHeight;
+            }
+        }
+
+        function formatMarkdown(text) {
+            let html = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/`(.*?)`/g, '<code class="bg-slate-800 px-1.5 py-0.5 rounded text-emerald-400 font-mono text-[11px]">$1</code>');
+            html = html.replace(/### (.*?)\n/g, '<h4 class="text-sm font-bold text-white mt-3 mb-1">$1</h4>');
+            html = html.replace(/## (.*?)\n/g, '<h3 class="text-base font-bold text-emerald-400 mt-4 mb-2">$1</h3>');
+            
+            let lines = html.split('\n');
+            let inList = false;
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+                if (line.startsWith('* ') || line.startsWith('- ')) {
+                    let content = line.substring(2);
+                    if (!inList) {
+                        lines[i] = '<ul class="list-disc list-inside space-y-1 my-2 text-slate-300 pl-2">\n<li>' + content + '</li>';
+                        inList = true;
+                    } else {
+                        lines[i] = '<li>' + content + '</li>';
+                    }
+                } else {
+                    if (inList) {
+                        lines[i-1] = lines[i-1] + '\n</ul>';
+                        inList = false;
+                    }
+                }
+            }
+            if (inList) lines[lines.length - 1] = lines[lines.length - 1] + '\n</ul>';
+            
+            return lines.join('\n').replace(/\n/g, '<br>');
+        }
+    </script>
+</body>
+</html>
