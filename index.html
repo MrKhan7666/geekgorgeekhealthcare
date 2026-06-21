@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Healthcare NotebookLM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        darkBg: '#0f172a',
+                        darkCard: '#1e293b',
+                        accentGreen: '#10b981'
+                    }
+                }
+            }
+        }
+    </script>
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-darkBg text-slate-100 min-h-screen font-sans antialiased">
+
+    <nav class="border-b border-slate-800 bg-darkCard/50 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <i data-lucide="activity" class="text-emerald-500 w-6 h-6"></i>
+            <span class="font-bold text-xl tracking-tight text-white">Care<span class="text-emerald-400">Notebook.AI</span></span>
+        </div>
+        
+        <div class="flex items-center gap-4 bg-slate-900/60 p-2 rounded-xl border border-slate-800">
+            <div class="relative flex items-center">
+                <input type="password" id="apiKeyInput" placeholder="Enter Gemini API Key" 
+                       class="bg-slate-900 text-xs text-slate-300 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-1 focus:ring-emerald-500 border border-slate-700">
+                <button onclick="connectAPI()" class="ml-2 text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-3 py-1.5 rounded-lg transition-all">
+                    Connect
+                </button>
+            </div>
+            <div class="flex items-center gap-2 border-l border-slate-700 pl-3">
+                <span id="statusIndicator" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                <span id="statusText" class="text-xs text-slate-400 font-medium">Disconnected</span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 max-w-[1600px] mx-auto h-[calc(100vh-85px)]">
+        
+        <div class="lg:col-span-4 flex flex-col gap-4 h-full overflow-hidden">
+            <div class="bg-darkCard border border-slate-800 rounded-2xl p-5 flex flex-col gap-4 shrink-0">
+                <h2 class="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                    <i data-lucide="folder-open" class="w-4 h-4 text-emerald-400"></i> Upload Source Materials
+                </h2>
+                
+                <label class="border-2 border-dashed border-slate-700 hover:border-emerald-500/50 rounded-xl p-6 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all bg-slate-900/40 group">
+                    <input type="file" id="filePicker" class="hidden" accept=".txt,.json,.md" onchange="handleFileUpload(event)">
+                    <div class="p-3 bg-slate-800 rounded-full group-hover:scale-110 transition-transform">
+                        <i data-lucide="upload-cloud" class="w-6 h-6 text-slate-400 group-hover:text-emerald-400"></i>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-sm font-medium text-slate-200">Click or drag report to upload</p>
+                        <p class="text-xs text-slate-500 mt-1">Accepts raw TXT medical logs/notes</p>
+                    </div>
+                </label>
+            </div>
+
+            <div class="bg-darkCard border border-slate-800 rounded-2xl p-5 flex-1 overflow-y-auto flex flex-col gap-3">
+                <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Loaded Documents</h3>
+                <div id="documentList" class="flex flex-col gap-2">
+                    <p class="text-xs text-slate-500 italic">No documents uploaded yet. Upload a test report below to simulate.</p>
+                </div>
+                
+                <div class="mt-auto pt-4 border-t border-slate-800 flex flex-col gap-2 shrink-0">
+                    <span class="text-[11px] text-slate-500 font-medium">Load Mock Dataset:</span>
+                    <button onclick="injectMock('report')" class="text-xs bg-slate-800 hover:bg-slate-700 text-left px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700">
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-400"></i> Mock Blood Test Report
+                    </button>
+                    <button onclick="injectMock('prescription')" class="text-xs bg-slate-800 hover:bg-slate-700 text-left px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700">
+                        <i data-lucide="pill" class="w-3.5 h-3.5 text-amber-400"></i> Mock Prescription
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-8 bg-darkCard border border-slate-800 rounded-2xl flex flex-col h-full overflow-hidden">
+            <div class="border-b border-slate-800 px-6 py-4 flex items-center justify-between bg-slate-900/40 shrink-0">
+                <div class="flex items-center gap-2">
+                    <div id="chatStatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-500"></div>
+                    <h2 class="font-semibold text-slate-200" id="chatEngineTitle">Agentic AI Copilot Chat</h2>
+                </div>
+                <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-md text-slate-400 border border-slate-700">Gemini Live RAG</span>
+            </div>
+
+            <div id="agentOutput" class="flex-1 overflow-y-auto p-6 space-y-4 text-sm leading-relaxed text-slate-300">
+                <div class="flex flex-col items-center justify-center h-full text-slate-500 gap-3">
+                    <i data-lucide="brain-circuit" class="w-12 h-12 stroke-1 text-slate-600 animate-pulse"></i>
+                    <p class="text-sm">Please connect your Gemini API key and upload/select documents to converse with the agent.</p>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-slate-800 bg-slate-900/30 shrink-0">
+                <form id="chatForm" onsubmit="handleChatSubmit(event)" class="flex gap-2">
+                    <input type="text" id="userInput" placeholder="Ask anything about your medical documents..." 
+                           class="flex-1 bg-slate-950 text-slate-200 text-sm rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-emerald-500 border border-slate-800" disabled>
+                    <button type="submit" id="sendBtn" class="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-medium px-5 py-3 rounded-xl transition-all flex items-center gap-2" disabled>
+                        <span>Send</span>
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { GoogleGenAI } from "@google/generative-ai";
+
+        // Internal Engine Framework States
+        let uploadedDocs = {};
+        let isConnected = false;
+        let apiKey = "";
+        let selectedDocId = null;
+        let aiModelInstance = null;
+
+        // Make functions globally available for inline HTML onclick attributes
+        window.connectAPI = connectAPI;
+        window.injectMock = injectMock;
+        window.handleFileUpload = handleFileUpload;
+        window.runAgentEngine = runAgentEngine;
+        window.handleChatSubmit = handleChatSubmit;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            lucide.createIcons();
+        });
+
+        function connectAPI() {
+            const keyInput = document.getElementById('apiKeyInput').value.trim();
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const chatStatusDot = document.getElementById('chatStatusDot');
+
+            if(keyInput.length > 10) {
+                apiKey = keyInput;
+                isConnected = true;
+                
+                // Initialize the SDK model instance
+                const ai = new GoogleGenAI({ apiKey: apiKey });
+                aiModelInstance = ai.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+                indicator.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]";
+                statusText.innerText = "Connected to Gemini";
+                statusText.className = "text-xs text-emerald-400 font-medium";
+                chatStatusDot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+                
+                enableChatInterface();
+                clearChatCanvas();
+                appendSystemMessage("System Active: Gemini API Handshake Complete. Ready to process records.");
+            } else {
+                alert("Please enter a valid Gemini API Key format.");
+            }
+        }
+
+        function enableChatInterface() {
+            document.getElementById('userInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
+
+        function clearChatCanvas() {
+            document.getElementById('agentOutput').innerHTML = '';
+        }
+
+        function appendSystemMessage(text) {
+            const output = document.getElementById('agentOutput');
+            const msg = document.createElement('div');
+            msg.className = "p-3 bg-slate-900/60 border border-slate-800 text-slate-400 text-xs rounded-xl italic text-center";
+            msg.innerText = text;
+            output.appendChild(msg);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        const mockData = {
+            report: {
+                name: "lab_report_0422.txt",
+                type: "Medical Report",
+                content: `[SECTION: Patient Info] Ref ID: 8842 - Date: 2026-04-12\n[SECTION: Metabolic Panel] Glucose: 145 mg/dL (Abnormal High, Normal: 70-99). Potassium: 4.2 mEq/L (Normal). Hemoglobin A1c: 6.8% (Abnormal High, Normal: <5.7%).`
+            },
+            prescription: {
+                name: "prescription_rx_90.txt",
+                type: "Prescription",
+                content: `[SECTION: Rx Orders] Metformin 500mg - Take 1 tablet twice daily with meals. Purpose: Managing blood sugar. Lisinopril 10mg - Take 1 tablet daily in the morning. Purpose: Blood pressure control.`
+            }
+        };
+
+        function injectMock(key) {
+            const data = mockData[key];
+            addDocument(data.name, data.type, data.content);
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                let type = "Medical Report";
+                if(file.name.toLowerCase().includes('rx') || file.name.toLowerCase().includes('presc')) type = "Prescription";
+                if(file.name.toLowerCase().includes('receipt') || file.name.toLowerCase().includes('bill')) type = "Receipt";
+                
+                addDocument(file.name, type, e.target.result);
+            };
+            reader.readAsText(file);
+        }
+
+        function addDocument(name, type, content) {
+            const id = 'doc_' + Date.now();
+            uploadedDocs[id] = { name, type, content };
+            
+            const container = document.getElementById('documentList');
+            if (container.querySelector('p')) container.innerHTML = '';
+
+            const docElement = document.createElement('button');
+            docElement.className = "w-full text-left bg-slate-900/50 hover:bg-slate-800/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between transition-all group border-l-4 border-l-slate-700";
+            docElement.id = id;
+            docElement.onclick = () => runAgentEngine(id);
+            docElement.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <i data-lucide="${type === 'Prescription' ? 'pill' : 'file-text'}" class="w-4 h-4 text-emerald-400"></i>
+                    <div class="truncate max-w-[180px]">
+                        <p class="text-xs font-medium text-slate-200 truncate">${name}</p>
+                        <p class="text-[10px] text-slate-500">${type}</p>
+                    </div>
+                </div>
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-600 group-hover:text-white transition-colors"></i>
+            `;
+            container.appendChild(docElement);
+            lucide.createIcons();
+            
+            runAgentEngine(id);
+        }
+
+        function runAgentEngine(id) {
+            selectedDocId = id;
+            
+            // UI visual update to show active document
+            Object.keys(uploadedDocs).forEach(docId => {
+                const el = document.getElementById(docId);
+                if(el) {
+                    if(docId === id) {
+                        el.classList.add('border-l-emerald-500', 'bg-slate-800/60');
+                    } else {
+                        el.classList.remove('border-l-emerald-500', 'bg-slate-800/60');
+                    }
+                }
+            });
+
+            document.getElementById('chatEngineTitle').innerText = `Analysis & Chat: ${uploadedDocs[id].name}`;
+            appendSystemMessage(`Target reference contexts switched to: ${uploadedDocs[id].name}`);
+        }
+
+        async function handleChatSubmit(e) {
+            e.preventDefault();
+            const inputEl = document.getElementById('userInput');
+            const query = inputEl.value.trim();
+            if(!query) return;
+
+            if(!isConnected) {
+                alert("Please add an API key and connect before chatting.");
+                return;
+            }
+
+            // Render User Prompt Bubble
+            appendChatBubble(query, 'user');
+            inputEl.value = '';
+
+            // Render Loader Stream Element Placeholder
+            const loadingBubbleId = appendChatBubble("", 'agent', true);
+
+            try {
+                let contextContent = "No documents currently attached.";
+                let contextName = "None";
+                if(selectedDocId && uploadedDocs[selectedDocId]) {
+                    contextContent = uploadedDocs[selectedDocId].content;
+                    contextName = uploadedDocs[selectedDocId].name;
+                }
+
+                // Construct an enterprise RAG guarding pipeline instruction frame
+                const systemInstructions = `
+                    You are an Agentic Healthcare Notebook AI assistant.
+                    Here is the document context currently loaded by the patient:
+                    ---
+                    Document Name: ${contextName}
+                    Content Data: ${contextContent}
+                    ---
+                    
+                    CRITICAL ASSIGNMENT INSTRUCTIONS:
+                    1. If the user's question relates directly to information inside the uploaded documentation context data provided above, answer the question accurately and provide direct text references or quotes as verification references.
+                    2. If the user's question is general, unrelated, or falls outside the scope of the provided document content data, you MUST provide a helpful general response but explicitly add a visible notice, note, or disclaimer at the bottom stating: "NOTE: I am an AI assistant. This specific inquiry is outside the scope of your uploaded document. Please consult your document context or a professional healthcare provider for verified clinical decisions."
+                    3. Keep your output clear and cleanly formatted using bullet points where appropriate. Always remain helpful, empathetic, and professional.
+                `;
+
+                const promptPayload = `${systemInstructions}\n\nUser Question: ${query}`;
+                const result = await aiModelInstance.generateContent(promptPayload);
+                const responseText = result.response.text();
+
+                // Replace loader placeholder content with real generation parsing
+                updateChatBubble(loadingBubbleId, responseText);
+
+            } catch (error) {
+                console.error(error);
+                updateChatBubble(loadingBubbleId, `<span class="text-red-400">Error processing request via Gemini Engine API. Please check your credentials key structure logs.</span>`);
+            }
+        }
+
+        function appendChatBubble(text, sender, isLoading = false) {
+            const output = document.getElementById('agentOutput');
+            const bubbleId = 'bubble_' + Date.now();
+            
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = `flex flex-col ${sender === 'user' ? 'items-end' : 'items-start'} space-y-1`;
+            messageWrapper.id = bubbleId;
+
+            const nameLabel = document.createElement('span');
+            nameLabel.className = "text-[10px] text-slate-500 font-mono px-1";
+            nameLabel.innerText = sender === 'user' ? 'You' : 'Agentic Copilot';
+
+            const bubble = document.createElement('div');
+            if(sender === 'user') {
+                bubble.className = "bg-slate-800 border border-slate-700 text-slate-200 text-xs px-4 py-3 rounded-2xl max-w-[85%]";
+                bubble.innerText = text;
+            } else {
+                bubble.className = "bg-slate-900/90 border border-slate-800 text-slate-300 text-xs px-4 py-3 rounded-2xl max-w-[90%] whitespace-pre-wrap leading-relaxed";
+                if(isLoading) {
+                    bubble.innerHTML = `<div class="flex items-center gap-2 text-slate-400"><i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i> Reasoning via Gemini vectors...</div>`;
+                } else {
+                    bubble.innerText = text;
+                }
+            }
+
+            messageWrapper.appendChild(nameLabel);
+            messageWrapper.appendChild(bubble);
+            output.appendChild(messageWrapper);
+            
+            lucide.createIcons();
+            output.scrollTop = output.scrollHeight;
+            return bubbleId;
+        }
+
+        function updateChatBubble(id, htmlContent) {
+            const element = document.getElementById(id);
+            if(element) {
+                const bubble = element.querySelector('div:last-child');
+                // Using simple formatting rules or basic tags mapping safely
+                bubble.innerHTML = htmlContent.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                const output = document.getElementById('agentOutput');
+                output.scrollTop = output.scrollHeight;
+            }
+        }
+    </script>
+</body>
+</html>
